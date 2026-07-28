@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.ATLASDB_URL || 'mongodb://localhost:27017/wealthflow';
+const ATLASDB_URL = process.env.ATLASDB_URL || 'mongodb://localhost:27017/wealthflow';
 
 app.use(cors());
 app.use(express.json());
