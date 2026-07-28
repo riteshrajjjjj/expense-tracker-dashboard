@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Wallet, 
-  TrendingUp, 
-  TrendingDown, 
-  PiggyBank, 
+import {
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  PiggyBank,
   Target,
   AlertCircle,
   Calendar,
@@ -26,12 +26,12 @@ import {
   Bell,
   Database
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://expense-tracker-dashboard-fm9d.onrender.com';
 
 const CATEGORY_COLORS = {
   Housing: '#3b82f6',
@@ -124,7 +124,7 @@ export default function App() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isLogin 
+        body: JSON.stringify(isLogin
           ? { email: authForm.email, password: authForm.password }
           : authForm
         )
@@ -167,8 +167,8 @@ export default function App() {
 
     if (!formData.title || !formData.amount) return;
 
-    const finalCategory = formData.category === 'Other' 
-      ? (formData.customCategory.trim() || 'Other') 
+    const finalCategory = formData.category === 'Other'
+      ? (formData.customCategory.trim() || 'Other')
       : formData.category;
 
     try {
