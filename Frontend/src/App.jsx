@@ -31,7 +31,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 
-const API_BASE_URL = 'https://expense-tracker-dashboard-fm9d.onrender.com';
+const API_BASE_URL = 'https://expense-tracker-dashboard-fm9d.onrender.com/api';
 
 const CATEGORY_COLORS = {
   Housing: '#3b82f6',
