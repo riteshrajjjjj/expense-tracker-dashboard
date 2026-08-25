@@ -1,32 +1,35 @@
 const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'User ID is required'],
+    index: true,
+  },
   title: {
     type: String,
     required: [true, 'Please add a transaction title'],
-    trim: true
+    trim: true,
   },
   amount: {
     type: Number,
-    required: [true, 'Please add a positive or negative amount']
+    required: [true, 'Please add a positive or negative amount'],
   },
   type: {
     type: String,
-    enum: ['INCOME', 'EXPENSE'],
-    required: [true, 'Type must be either INCOME or EXPENSE']
+    enum: ['INCOME', 'EXPENSE', 'TRANSFER'],
+    required: [true, 'Type must be INCOME, EXPENSE, or TRANSFER'],
   },
   category: {
     type: String,
     required: [true, 'Please select a category'],
-    index: true
+    index: true,
   },
   date: {
     type: Date,
     default: Date.now,
-    index: true
-  }
-}, {
-  timestamps: true
+  },
 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

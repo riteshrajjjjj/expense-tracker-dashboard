@@ -13,7 +13,6 @@ import {
   Settings,
   Trash2,
   Edit2,
-  CheckCircle2,
   Trophy,
   DollarSign,
   Search,
@@ -22,8 +21,6 @@ import {
   X,
   User,
   LogOut,
-  ShieldCheck,
-  Bell,
   Database
 } from 'lucide-react';
 import {
@@ -31,7 +28,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 
-const API_BASE_URL = 'https://expense-tracker-dashboard-fm9d.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const CATEGORY_COLORS = {
   Housing: '#3b82f6',
@@ -52,12 +49,14 @@ export default function App() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Authentication State
+  // Authentication State & Token Management
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('wealthflow_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [authModal, setAuthModal] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem('wealthflow_token') || '');
+
+  const [authModal, setAuthModal] = useState(null); // 'login' or 'signup'
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
@@ -75,9 +74,16 @@ export default function App() {
     customCategory: ''
   });
 
+  // Helper for Authorization Headers
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  });
+
   useEffect(() => {
-    if (user && (user.id || user._id)) {
-      fetchAllUserData(user.id || user._id);
+    const userId = user?.id || user?._id;
+    if (userId) {
+      fetchAllUserData(userId);
     } else {
       setTransactions([]);
       setGoals([]);
@@ -89,11 +95,12 @@ export default function App() {
   const fetchAllUserData = async (userId) => {
     setIsLoading(true);
     try {
+      const headers = getAuthHeaders();
       const [txRes, goalRes, budgetRes, subRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/transactions?userId=${userId}`),
-        fetch(`${API_BASE_URL}/goals?userId=${userId}`),
-        fetch(`${API_BASE_URL}/budgets?userId=${userId}`),
-        fetch(`${API_BASE_URL}/subscriptions?userId=${userId}`)
+        fetch(`${API_BASE_URL}/transactions?userId=${userId}`, { headers }),
+        fetch(`${API_BASE_URL}/goals?userId=${userId}`, { headers }),
+        fetch(`${API_BASE_URL}/budgets?userId=${userId}`, { headers }),
+        fetch(`${API_BASE_URL}/subscriptions?userId=${userId}`, { headers })
       ]);
 
       const txData = await txRes.json();
@@ -134,15 +141,21 @@ export default function App() {
 
       if (data.success) {
         const userData = data.user;
+        const authToken = data.token;
+
         setUser(userData);
+        setToken(authToken);
+
         localStorage.setItem('wealthflow_user', JSON.stringify(userData));
+        localStorage.setItem('wealthflow_token', authToken);
+
         setAuthModal(null);
         setAuthForm({ name: '', email: '', password: '' });
       } else {
         setAuthError(data.message || 'Authentication failed');
       }
     } catch (err) {
-      setAuthError('Connection server error');
+      setAuthError('Server connection error');
     } finally {
       setIsAuthLoading(false);
     }
@@ -150,7 +163,9 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    setToken('');
     localStorage.removeItem('wealthflow_user');
+    localStorage.removeItem('wealthflow_token');
     setTransactions([]);
     setGoals([]);
     setBudgets([]);
@@ -159,7 +174,8 @@ export default function App() {
 
   const handleAddTransaction = async (e) => {
     e.preventDefault();
-    if (!user) {
+    const userId = user?.id || user?._id;
+    if (!userId) {
       alert('Please log in to save transactions.');
       setAuthModal('login');
       return;
@@ -174,9 +190,9 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE_URL}/transactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          userId: user.id || user._id,
+          userId,
           title: formData.title,
           amount: parseFloat(formData.amount),
           type: formData.type,
@@ -196,7 +212,10 @@ export default function App() {
 
   const handleDeleteTransaction = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/transactions/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) {
         setTransactions(transactions.filter(t => (t._id || t.id) !== id));
@@ -207,13 +226,14 @@ export default function App() {
   };
 
   const handleAddNewSubscription = async () => {
-    if (!user) {
+    const userId = user?.id || user?._id;
+    if (!userId) {
       alert('Please log in to manage subscriptions.');
       setAuthModal('login');
       return;
     }
 
-    const title = prompt('Enter Bill / Subscription Name (e.g., Spotify):');
+    const title = prompt('Enter Bill / Subscription Name (e.g., Netflix):');
     if (!title) return;
     const amount = prompt('Enter Bill Amount ($):');
     if (!amount || isNaN(amount)) return;
@@ -223,8 +243,8 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE_URL}/subscriptions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id || user._id, title, amount: parseFloat(amount), dueDate, status: 'Pending' })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId, title, amount: parseFloat(amount), dueDate, status: 'Pending' })
       });
       const data = await res.json();
       if (data.success) {
@@ -239,32 +259,30 @@ export default function App() {
     const targetBill = subscriptions.find(s => (s._id || s.id) === subId);
     if (!targetBill) return;
 
-    const newStatus = targetBill.status === 'Pending' ? 'Paid' : 'Pending';
-
     try {
-      const res = await fetch(`${API_BASE_URL}/subscriptions/${subId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+      const res = await fetch(`${API_BASE_URL}/subscriptions/${subId}/pay`, {
+        method: 'PATCH',
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (data.success) {
         setSubscriptions(subscriptions.map(s => ((s._id || s.id) === subId ? data.data : s)));
       }
 
-      if (newStatus === 'Paid' && user) {
+      const userId = user?.id || user?._id;
+      if (data.data.status === 'Paid' && userId) {
         await fetch(`${API_BASE_URL}/transactions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
-            userId: user.id || user._id,
+            userId,
             title: targetBill.title,
             amount: targetBill.amount,
             type: 'EXPENSE',
             category: 'Utilities'
           })
         });
-        fetchAllUserData(user.id || user._id);
+        fetchAllUserData(userId);
       }
     } catch (err) {
       console.error('Failed to update bill status:', err);
@@ -272,13 +290,14 @@ export default function App() {
   };
 
   const handleAddNewGoal = async () => {
-    if (!user) {
+    const userId = user?.id || user?._id;
+    if (!userId) {
       alert('Please log in to add savings goals.');
       setAuthModal('login');
       return;
     }
 
-    const name = prompt('Enter Goal Name (e.g., Car Deposit):');
+    const name = prompt('Enter Goal Name (e.g., Emergency Fund):');
     if (!name) return;
     const target = prompt('Enter Target Amount ($):');
     if (!target || isNaN(target)) return;
@@ -286,8 +305,8 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE_URL}/goals`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id || user._id, name, target: parseFloat(target), current: 0, color: '#3b82f6' })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId, name, target: parseFloat(target), current: 0, color: '#3b82f6' })
       });
       const data = await res.json();
       if (data.success) {
@@ -299,7 +318,8 @@ export default function App() {
   };
 
   const handleDepositToGoal = async (goalId) => {
-    if (!user) {
+    const userId = user?.id || user?._id;
+    if (!userId) {
       alert('Please log in.');
       setAuthModal('login');
       return;
@@ -311,22 +331,20 @@ export default function App() {
     const deposit = prompt(`Deposit money toward "${targetGoal.name}" ($):`);
     if (!deposit || isNaN(deposit)) return;
     const amount = parseFloat(deposit);
-
     const newCurrent = targetGoal.current + amount;
 
     try {
       await fetch(`${API_BASE_URL}/goals/${goalId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ current: newCurrent })
       });
 
-      // Saving to a goal is an EXPENSE/TRANSFER out of main cash
       await fetch(`${API_BASE_URL}/transactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          userId: user.id || user._id,
+          userId,
           title: `Saved for ${targetGoal.name}`,
           amount,
           type: 'EXPENSE',
@@ -334,14 +352,16 @@ export default function App() {
         })
       });
 
-      fetchAllUserData(user.id || user._id);
+      fetchAllUserData(userId);
     } catch (err) {
       console.error('Failed deposit:', err);
     }
   };
 
   const handleWithdrawFromGoal = async (goalId) => {
-    if (!user) return;
+    const userId = user?.id || user?._id;
+    if (!userId) return;
+
     const targetGoal = goals.find(g => (g._id || g.id) === goalId);
     if (!targetGoal) return;
 
@@ -353,16 +373,15 @@ export default function App() {
     try {
       await fetch(`${API_BASE_URL}/goals/${goalId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ current: newCurrent })
       });
 
-      // 🎯 FIXED: Set type to 'TRANSFER' so it doesn't inflate Monthly Income
       await fetch(`${API_BASE_URL}/transactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          userId: user.id || user._id,
+          userId,
           title: `Withdrew from ${targetGoal.name}`,
           amount,
           type: 'TRANSFER',
@@ -370,7 +389,7 @@ export default function App() {
         })
       });
 
-      fetchAllUserData(user.id || user._id);
+      fetchAllUserData(userId);
     } catch (err) {
       console.error('Failed withdrawal:', err);
     }
@@ -379,7 +398,10 @@ export default function App() {
   const handleDeleteGoal = async (goalId) => {
     if (window.confirm('Delete this goal?')) {
       try {
-        await fetch(`${API_BASE_URL}/goals/${goalId}`, { method: 'DELETE' });
+        await fetch(`${API_BASE_URL}/goals/${goalId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
         setGoals(goals.filter(g => (g._id || g.id) !== goalId));
       } catch (err) {
         console.error('Failed to delete goal:', err);
@@ -388,7 +410,8 @@ export default function App() {
   };
 
   const handleEditBudgetLimit = async (categoryName) => {
-    if (!user) {
+    const userId = user?.id || user?._id;
+    if (!userId) {
       alert('Please log in to edit budgets.');
       setAuthModal('login');
       return;
@@ -403,8 +426,8 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE_URL}/budgets`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id || user._id, category: categoryName, limit: parseFloat(newLimit) })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId, category: categoryName, limit: parseFloat(newLimit) })
       });
       const data = await res.json();
       if (data.success) {
@@ -419,7 +442,7 @@ export default function App() {
     }
   };
 
-  // Metric Calculations (Only counts 'INCOME' type transactions for income)
+  // Metric Calculations
   const totalIncome = transactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + Number(t.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + Number(t.amount), 0);
   const netWorth = totalIncome - totalExpense;
@@ -500,8 +523,8 @@ export default function App() {
               </div>
             ) : (
               <>
-                <button onClick={() => setAuthModal('signin')} className="sign-in-btn">Sign in</button>
-                <button onClick={() => setAuthModal('login')} className="log-in-pill-btn">Log in</button>
+                <button onClick={() => { setAuthError(''); setAuthModal('signup'); }} className="sign-in-btn">Sign up</button>
+                <button onClick={() => { setAuthError(''); setAuthModal('login'); }} className="log-in-pill-btn">Log in</button>
               </>
             )}
           </div>
@@ -514,12 +537,12 @@ export default function App() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <button onClick={() => setAuthModal(null)} style={{ position: 'absolute', top: '16px', right: '16px', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={20} /></button>
             <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 6px 0' }}>{authModal === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
-            <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px 0' }}>Access your personal Smart Wealth Dashboard</p>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px 0' }}>{authModal === 'login' ? 'Access your personal Smart Wealth Dashboard' : 'Sign up to start tracking your finances'}</p>
 
             {authError && <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '14px' }}>{authError}</div>}
 
             <form onSubmit={handleAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {authModal === 'signin' && (
+              {authModal === 'signup' && (
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Full Name</label>
                   <input type="text" placeholder="John Doe" value={authForm.name} onChange={e => setAuthForm({ ...authForm, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} required />
@@ -536,6 +559,14 @@ export default function App() {
               <button type="submit" disabled={isAuthLoading} style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', marginTop: '6px' }}>
                 {isAuthLoading ? 'Processing...' : (authModal === 'login' ? 'Log in' : 'Create Account')}
               </button>
+
+              <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '13px', color: '#64748b' }}>
+                {authModal === 'login' ? (
+                  <>Don't have an account? <span onClick={() => { setAuthError(''); setAuthModal('signup'); }} style={{ color: '#2563eb', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></>
+                ) : (
+                  <>Already have an account? <span onClick={() => { setAuthError(''); setAuthModal('login'); }} style={{ color: '#2563eb', cursor: 'pointer', fontWeight: '600' }}>Log in</span></>
+                )}
+              </div>
             </form>
           </div>
         </div>
@@ -547,8 +578,8 @@ export default function App() {
           <>
             {!user && (
               <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px 18px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '13px', color: '#1e40af' }}><strong>Logged in as Guest:</strong> Log in or Sign in to load and save your personal financial data.</div>
-                <button onClick={() => setAuthModal('login')} style={{ backgroundColor: '#2563eb', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Log In Now</button>
+                <div style={{ fontSize: '13px', color: '#1e40af' }}><strong>Logged in as Guest:</strong> Log in or Sign up to load and save your personal financial data.</div>
+                <button onClick={() => { setAuthError(''); setAuthModal('login'); }} style={{ backgroundColor: '#2563eb', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Log In Now</button>
               </div>
             )}
 
